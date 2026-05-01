@@ -4,6 +4,7 @@ import pandas as pd
 from tabulate import tabulate 
 import slow_solution_apriori
 import slow_solution_fpgrowth
+import solution_155898_156021_155934
 
 def benchmark_solution(solution_module, name, iterations=5, support=0.03, confidence=0.5):
     print(f"Rozpoczynam testy dla: {name}...")
@@ -40,17 +41,24 @@ def run_comparison():
     results = []
 
     # Test Apriori
-    try:
-        apriori_stats = benchmark_solution(slow_solution_apriori, "Apriori (Slow)", ITERATIONS, MIN_SUPPORT, MIN_CONFIDENCE)
-        results.append(apriori_stats)
-    except Exception as e:
-        print(f"Błąd podczas testu Apriori: {e}")
+    # try:
+    #     apriori_stats = benchmark_solution(slow_solution_apriori, "Apriori (Slow)", ITERATIONS, MIN_SUPPORT, MIN_CONFIDENCE)
+    #     results.append(apriori_stats)
+    # except Exception as e:
+    #     print(f"Błąd podczas testu Apriori: {e}")
 
     print("-" * 30)
 
     # Test FP-Growth
+    # try:
+    #     fpgrowth_stats = benchmark_solution(slow_solution_fpgrowth, "FP-Growth (Slow)", ITERATIONS, MIN_SUPPORT, MIN_CONFIDENCE)
+    #     results.append(fpgrowth_stats)
+    # except Exception as e:
+    #     print(f"Błąd podczas testu FP-Growth: {e}")
+
+
     try:
-        fpgrowth_stats = benchmark_solution(slow_solution_fpgrowth, "FP-Growth (Slow)", ITERATIONS, MIN_SUPPORT, MIN_CONFIDENCE)
+        fpgrowth_stats = benchmark_solution(solution_155898_156021_155934, "155898 & 156021 & 155934", ITERATIONS, MIN_SUPPORT, MIN_CONFIDENCE)
         results.append(fpgrowth_stats)
     except Exception as e:
         print(f"Błąd podczas testu FP-Growth: {e}")
