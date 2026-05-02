@@ -1,66 +1,72 @@
 #include "fp_growth.hpp"
 #include <algorithm>
 #include <iostream>
+#include <omp.h>
+#include <sstream>
 
 namespace {
-void print_json_string(const std::string &value) {
-    std::cout << '"';
+void print_json_string(std::ostream &out, const std::string &value) {
+    out << '"';
     for (char ch : value) {
         switch (ch) {
-        case '\\':
-            std::cout << "\\\\";
-            break;
-        case '"':
-            std::cout << "\\\"";
-            break;
-        case '\n':
-            std::cout << "\\n";
-            break;
-        case '\r':
-            std::cout << "\\r";
-            break;
-        case '\t':
-            std::cout << "\\t";
-            break;
-        default:
-            std::cout << ch;
-            break;
+        case '\\': out << "\\\\"; break;
+        case '"': out << "\\\""; break;
+        case '\n': out << "\\n"; break;
+        case '\r': out << "\\r"; break;
+        case '\t': out << "\\t"; break;
+        default: out << ch; break;
         }
     }
-    std::cout << '"';
+    out << '"';
 }
 
-void print_json_array(const Itemset &items) {
-    std::cout << '[';
+void print_json_array(std::ostream &out, const Itemset &items) {
+    out << '[';
     bool first = true;
     for (const auto &item : items) {
-        if (!first) {
-            std::cout << ',';
-        }
-        print_json_string(item);
+        if (!first) out << ',';
+        print_json_string(out, item);
         first = false;
     }
-    std::cout << ']';
+    out << ']';
 }
+
 } // namespace
 
 void FPGrowth::count_items(std::unordered_map<std::string, int> &item_counts) {
-    for (const auto &t : transactions) {
-        for (const auto &item : t) {
-            item_counts[item]++;
+    const int max_threads = omp_get_max_threads();
+    std::vector<std::unordered_map<std::string, int>> local_counts(max_threads);
+
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        auto &local = local_counts[tid];
+
+        #pragma omp for schedule(static)
+        for (long long i = 0; i < static_cast<long long>(transactions.size()); ++i) {
+            for (const auto &item : transactions[i]) {
+                ++local[item];
+            }
+        }
+    }
+
+    for (auto &local : local_counts) {
+        for (auto &[item, count] : local) {
+            item_counts[item] += count;
         }
     }
 }
 
-void FPGrowth::build_tree(const Transaction &sorted_items) {
+void FPGrowth::build_tree(const Transaction &sorted_items,
+                          const std::unordered_map<std::string, int> &item_counts) {
     header_table.clear();
+    header_table.reserve(item_counts.size());
 
-    std::unordered_map<std::string, int> item_counts;
-    count_items(item_counts);
-
-    for (auto &[item, count] : item_counts) {
+    for (const auto &[item, count] : item_counts) {
         if (count >= min_support_count) {
-            header_table[item] = {count, nullptr};
+            HeaderEntry entry;
+            entry.count = count;
+            header_table.emplace(item, entry);
         }
     }
 
@@ -70,7 +76,12 @@ void FPGrowth::build_tree(const Transaction &sorted_items) {
         rank[sorted_items[i]] = static_cast<int>(i);
     }
 
-    for (const auto &trans : transactions) {
+    // Ten etap jest niezależny dla każdej transakcji, więc OpenMP ma tu sens.
+    Transactions prepared(transactions.size());
+
+    #pragma omp parallel for schedule(dynamic, 256)
+    for (long long i = 0; i < static_cast<long long>(transactions.size()); ++i) {
+        const auto &trans = transactions[i];
         Transaction filtered;
         filtered.reserve(trans.size());
 
@@ -80,11 +91,16 @@ void FPGrowth::build_tree(const Transaction &sorted_items) {
             }
         }
 
+        std::sort(filtered.begin(), filtered.end(), [&](const auto &a, const auto &b) {
+            return rank.find(a)->second < rank.find(b)->second;
+        });
+
+        prepared[i] = std::move(filtered);
+    }
+
+    // Wstawianie do jednego FP-tree zostaje sekwencyjne, bo modyfikuje wspólne drzewo.
+    for (const auto &filtered : prepared) {
         if (!filtered.empty()) {
-            std::sort(filtered.begin(), filtered.end(),
-                      [&](const auto &a, const auto &b) {
-                          return rank[a] < rank[b];
-                      });
             insert_tree(filtered, root, header_table);
         }
     }
@@ -92,32 +108,31 @@ void FPGrowth::build_tree(const Transaction &sorted_items) {
 
 void FPGrowth::insert_tree(const Transaction &items, NodePointer node,
                            HeaderTable &table, size_t idx) {
+    // Iteracyjnie zamiast rekurencji: mniej narzutu dla długich transakcji.
+    for (size_t pos = idx; pos < items.size(); ++pos) {
+        const std::string &item = items[pos];
+        NodePointer child;
 
-    if (idx >= items.size())
-        return;
-
-    const std::string &item = items[idx];
-    NodePointer child;
-
-    if (node->children.count(item)) {
-        child = node->children[item];
-        child->count += 1;
-    } else {
-        child = std::make_shared<Node>(item, 1, node);
-        node->children[item] = child;
-
-        auto &entry = table[item];
-        if (!entry.head) {
-            entry.head = child;
+        auto child_it = node->children.find(item);
+        if (child_it != node->children.end()) {
+            child = child_it->second;
+            child->count += 1;
         } else {
-            auto cur = entry.head;
-            while (auto nxt = cur->next_link.lock())
-                cur = nxt;
-            cur->next_link = child;
-        }
-    }
+            child = std::make_shared<Node>(item, 1, node);
+            node->children.emplace(item, child);
 
-    insert_tree(items, child, table, idx + 1);
+            auto &entry = table[item];
+            if (!entry.head) {
+                entry.head = child;
+                entry.tail = child;
+            } else {
+                entry.tail->next_link = child;
+                entry.tail = child;
+            }
+        }
+
+        node = child;
+    }
 }
 
 void FPGrowth::mine_tree(HeaderTable &table, Itemset prefix) {
@@ -140,7 +155,7 @@ void FPGrowth::mine_tree(HeaderTable &table, Itemset prefix) {
             }
 
             if (!path.empty()) {
-                cond_patterns.emplace_back(path, node->count);
+                cond_patterns.emplace_back(std::move(path), node->count);
             }
 
             node = node->next_link.lock();
@@ -148,14 +163,18 @@ void FPGrowth::mine_tree(HeaderTable &table, Itemset prefix) {
 
         std::unordered_map<std::string, int> cond_counts;
         for (auto &[path, c] : cond_patterns) {
-            for (auto &x : path)
+            for (auto &x : path) {
                 cond_counts[x] += c;
+            }
         }
 
         HeaderTable cond_table;
+        cond_table.reserve(cond_counts.size());
         for (auto &[k, v] : cond_counts) {
             if (v >= min_support_count) {
-                cond_table[k] = {v, nullptr};
+                HeaderEntry e;
+                e.count = v;
+                cond_table.emplace(k, e);
             }
         }
 
@@ -166,39 +185,57 @@ void FPGrowth::mine_tree(HeaderTable &table, Itemset prefix) {
 }
 
 void FPGrowth::generate_rules() {
-    for (auto &[itemset, count] : frequent_itemsets) {
-        if (itemset.size() < 2)
-            continue;
+    std::vector<std::pair<Itemset, int>> itemsets;
+    itemsets.reserve(frequent_itemsets.size());
+    for (const auto &[itemset, count] : frequent_itemsets) {
+        if (itemset.size() >= 2) {
+            itemsets.emplace_back(itemset, count);
+        }
+    }
 
-        Transaction items(itemset.begin(), itemset.end());
-        int n = items.size();
+    // Wypisywanie jest często wąskim gardłem. Bufor lokalny ogranicza walkę o stdout.
+    #pragma omp parallel
+    {
+        std::ostringstream local_out;
 
-        for (int mask = 1; mask < (1 << n) - 1; ++mask) {
-            Itemset A, B;
+        #pragma omp for schedule(dynamic)
+        for (long long idx = 0; idx < static_cast<long long>(itemsets.size()); ++idx) {
+            const auto &itemset = itemsets[static_cast<size_t>(idx)].first;
+            int count = itemsets[static_cast<size_t>(idx)].second;
 
-            for (int i = 0; i < n; ++i) {
-                if (mask & (1 << i))
-                    A.insert(items[i]);
-                else
-                    B.insert(items[i]);
+            Transaction items(itemset.begin(), itemset.end());
+            int n = static_cast<int>(items.size());
+            if (n >= 31) continue; // zabezpieczenie przed overflow maski int
+
+            for (int mask = 1; mask < (1 << n) - 1; ++mask) {
+                Itemset A, B;
+
+                for (int i = 0; i < n; ++i) {
+                    if (mask & (1 << i)) A.insert(items[i]);
+                    else B.insert(items[i]);
+                }
+
+                auto antecedent_it = frequent_itemsets.find(A);
+                if (antecedent_it == frequent_itemsets.end()) continue;
+
+                double conf = static_cast<double>(count) / antecedent_it->second;
+                double supp = static_cast<double>(count) / transactions.size();
+
+                if (conf >= min_confidence) {
+                    local_out << "{\"A\":";
+                    print_json_array(local_out, A);
+                    local_out << ",\"B\":";
+                    print_json_array(local_out, B);
+                    local_out << ",\"supp\":" << supp;
+                    local_out << ",\"conf\":" << conf;
+                    local_out << "}\n";
+                }
             }
+        }
 
-            auto it = frequent_itemsets.find(A);
-            if (it == frequent_itemsets.end())
-                continue;
-
-            double conf = (double)count / it->second;
-            double supp = (double)count / transactions.size();
-
-            if (conf >= min_confidence) {
-                std::cout << "{\"A\":";
-                print_json_array(A);
-                std::cout << ",\"B\":";
-                print_json_array(B);
-                std::cout << ",\"supp\":" << supp;
-                std::cout << ",\"conf\":" << conf;
-                std::cout << "}\n";
-            }
+        #pragma omp critical
+        {
+            std::cout << local_out.str();
         }
     }
 }
@@ -208,15 +245,16 @@ void FPGrowth::solve() {
     count_items(item_counts);
 
     Transaction sorted_items;
-    for (auto &[item, _] : item_counts)
+    sorted_items.reserve(item_counts.size());
+    for (auto &[item, _] : item_counts) {
         sorted_items.push_back(item);
+    }
 
-    std::sort(sorted_items.begin(), sorted_items.end(),
-              [&](const auto &a, const auto &b) {
-                  return item_counts[a] > item_counts[b];
-              });
+    std::sort(sorted_items.begin(), sorted_items.end(), [&](const auto &a, const auto &b) {
+        return item_counts[a] > item_counts[b];
+    });
 
-    build_tree(sorted_items);
+    build_tree(sorted_items, item_counts);
 
     mine_tree(header_table, {});
 

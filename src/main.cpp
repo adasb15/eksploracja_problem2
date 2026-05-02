@@ -4,7 +4,7 @@
 
 // TODO: add verbose handling
 // TODO: replace stdout data transmission with something like: pybind11
-// to fix the bizarelly poor performance (hopefully)
+// to fix the bizarelly poor performance (hopefully)  (Chyba do wywalenia oba???)
 
 int main(int argc, char *argv[]) {
     std::ios::sync_with_stdio(false);

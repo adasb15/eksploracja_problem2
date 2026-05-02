@@ -36,7 +36,8 @@ class FPGrowth {
   private:
     void count_items(std::unordered_map<std::string, int> &item_counts);
 
-    void build_tree(const Transaction &sorted_items);
+    void build_tree(const Transaction &sorted_items,
+                    const std::unordered_map<std::string, int> &item_counts);
 
     void mine_tree(HeaderTable &table, Itemset prefix);
 

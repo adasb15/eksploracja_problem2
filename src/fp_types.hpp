@@ -8,11 +8,8 @@
 #include <vector>
 
 using Itemset = std::set<std::string>;
-
 using FrequentMap = std::map<Itemset, int>;
-
 using Transaction = std::vector<std::string>;
-
 using Transactions = std::vector<Transaction>;
 
 class Node {
@@ -33,8 +30,9 @@ using NodePointer = std::shared_ptr<Node>;
 
 class HeaderEntry {
   public:
-    int count;
-    NodePointer head;
+    int count = 0;
+    NodePointer head = nullptr;
+    NodePointer tail = nullptr; // przyspiesza dopinanie next_link z O(k) do O(1)
 };
 
 using HeaderTable = std::unordered_map<std::string, HeaderEntry>;

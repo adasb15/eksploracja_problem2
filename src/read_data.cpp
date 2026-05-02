@@ -3,7 +3,6 @@
 #include <cctype>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -23,14 +22,24 @@ Transactions read_data(const std::string &datapath) {
     std::unordered_map<std::string, std::unordered_set<std::string>> trans_dict;
 
     while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string id, item;
+        size_t first_comma = line.find(',');
+        if (first_comma == std::string::npos) {
+            continue;
+        }
 
-        if (std::getline(ss, id, ',') && std::getline(ss, item, ',')) {
-            // check if id is numeric
-            if (!id.empty() && std::all_of(id.begin(), id.end(), ::isdigit)) {
-                trans_dict[id].insert(item);
-            }
+        std::string id = line.substr(0, first_comma);
+        if (id.empty() || !std::all_of(id.begin(), id.end(), [](unsigned char ch) { return std::isdigit(ch); })) {
+            continue;
+        }
+
+        size_t second_comma = line.find(',', first_comma + 1);
+        std::string item = line.substr(
+            first_comma + 1,
+            second_comma == std::string::npos ? std::string::npos : second_comma - first_comma - 1
+        );
+
+        if (!item.empty()) {
+            trans_dict[id].insert(std::move(item));
         }
     }
 
