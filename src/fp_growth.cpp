@@ -2,6 +2,48 @@
 #include <algorithm>
 #include <iostream>
 
+namespace {
+void print_json_string(const std::string &value) {
+    std::cout << '"';
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            std::cout << "\\\\";
+            break;
+        case '"':
+            std::cout << "\\\"";
+            break;
+        case '\n':
+            std::cout << "\\n";
+            break;
+        case '\r':
+            std::cout << "\\r";
+            break;
+        case '\t':
+            std::cout << "\\t";
+            break;
+        default:
+            std::cout << ch;
+            break;
+        }
+    }
+    std::cout << '"';
+}
+
+void print_json_array(const Itemset &items) {
+    std::cout << '[';
+    bool first = true;
+    for (const auto &item : items) {
+        if (!first) {
+            std::cout << ',';
+        }
+        print_json_string(item);
+        first = false;
+    }
+    std::cout << ']';
+}
+} // namespace
+
 void FPGrowth::count_items(std::unordered_map<std::string, int> &item_counts) {
     for (const auto &t : transactions) {
         for (const auto &item : t) {
@@ -22,16 +64,27 @@ void FPGrowth::build_tree(const Transaction &sorted_items) {
         }
     }
 
+    std::unordered_map<std::string, int> rank;
+    rank.reserve(sorted_items.size());
+    for (size_t i = 0; i < sorted_items.size(); ++i) {
+        rank[sorted_items[i]] = static_cast<int>(i);
+    }
+
     for (const auto &trans : transactions) {
         Transaction filtered;
+        filtered.reserve(trans.size());
 
-        for (const auto &item : sorted_items) {
-            if (std::find(trans.begin(), trans.end(), item) != trans.end()) {
+        for (const auto &item : trans) {
+            if (header_table.find(item) != header_table.end()) {
                 filtered.push_back(item);
             }
         }
 
         if (!filtered.empty()) {
+            std::sort(filtered.begin(), filtered.end(),
+                      [&](const auto &a, const auto &b) {
+                          return rank[a] < rank[b];
+                      });
             insert_tree(filtered, root, header_table);
         }
     }
@@ -113,8 +166,6 @@ void FPGrowth::mine_tree(HeaderTable &table, Itemset prefix) {
 }
 
 void FPGrowth::generate_rules() {
-    bool found = false;
-
     for (auto &[itemset, count] : frequent_itemsets) {
         if (itemset.size() < 2)
             continue;
@@ -139,15 +190,14 @@ void FPGrowth::generate_rules() {
             double conf = (double)count / it->second;
             double supp = (double)count / transactions.size();
 
-            // output a json-like format
             if (conf >= min_confidence) {
-                std::cout << "{'A':";
-                for (auto &a : A)
-                    std::cout << a << " ";
-                std::cout << "] => [";
-                for (auto &b : B)
-                    std::cout << b << " ";
-                std::cout << "]\n";
+                std::cout << "{\"A\":";
+                print_json_array(A);
+                std::cout << ",\"B\":";
+                print_json_array(B);
+                std::cout << ",\"supp\":" << supp;
+                std::cout << ",\"conf\":" << conf;
+                std::cout << "}\n";
             }
         }
     }

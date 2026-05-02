@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fp_types.hpp"
+#include <cmath>
 
 class FPGrowth {
   private:
@@ -26,7 +27,7 @@ class FPGrowth {
         this->min_confidence = min_confidence;
         this->transactions = std::move(data);
         this->n_trans = transactions.size();
-        this->min_support_count = static_cast<int>(min_support * n_trans);
+        this->min_support_count = static_cast<int>(std::ceil(min_support * n_trans));
         this->root = std::make_shared<Node>("", 0);
     }
 
