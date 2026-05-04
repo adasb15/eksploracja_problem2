@@ -34,7 +34,7 @@ def run_comparison():
     ITERATIONS = config.test_iters
 
     print("="*50)
-    print(f"BENCHMARK: Apriori vs FP-Growth (n={ITERATIONS})")
+    print(f"BENCHMARK: Apriori vs FP-Growth vs Nasza implementacja FP-Growth (n={ITERATIONS})")
     print(f"Parametry: Support={MIN_SUPPORT}, Confidence={MIN_CONFIDENCE}")
     print("="*50)
 

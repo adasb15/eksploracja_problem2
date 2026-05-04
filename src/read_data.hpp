@@ -2,4 +2,5 @@
 
 #include "fp_types.hpp"
 
-Transactions read_data(const std::string &datapath);
+// Wczytuje CSV i koduje StockCode do int, zachowując mapowanie int -> oryginalny kod
+Dataset read_data(const std::string &datapath);

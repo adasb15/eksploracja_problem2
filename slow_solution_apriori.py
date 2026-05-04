@@ -114,7 +114,7 @@ def solve(min_support, min_confidence, verbose = True):
     if not verbose:
         print(f'Wygenerowano {len(rules)} reguł.')
         for rule in rules:
-            print(f'{rule['A']}=>{rule['B']} Support: {rule['supp']}, Confidence: {rule['conf']}')
+            print(f"{rule['A']}=>{rule['B']} Support: {rule['supp']}, Confidence: {rule['conf']}")
     return rules
 if __name__ == "__main__":
     solve(config.min_support, config.min_confidence, verbose=False)

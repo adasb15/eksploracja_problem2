@@ -3,3 +3,5 @@ data/test.csv
 venv/
 main.exe
 __pycache__/
+config.py
+compare_rules.py
