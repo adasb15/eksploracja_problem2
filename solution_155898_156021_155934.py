@@ -1,10 +1,32 @@
 import subprocess
 import json
 import config
+import os
 
 # NOTE: Setup solution according to SETUP.md
 
+def compile_cpp():
+    #Kompilacja c++ 
+    if os.path.exists("main.exe"):
+        return
+    
+    result = subprocess.run(
+        ["g++", "-std=c++17", "-O2", "-fopenmp",
+         "src/main.cpp", "src/fp_growth.cpp", "src/read_data.cpp",
+         "-o", "main.exe"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError(f"Kompilacja C++ nie powiodła się")
+    
+    print("Kompilacja C++ zakończona pomyślnie")
+
 def solve(min_support, min_confidence, verbose=False):
+    compile_cpp()
+    
     result = subprocess.run(
         ["./main.exe", str(min_support), str(min_confidence), config.datapath, "1" if verbose else "0"],
         capture_output=True,
