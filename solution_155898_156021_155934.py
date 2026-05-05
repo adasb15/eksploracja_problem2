@@ -22,8 +22,6 @@ def compile_cpp():
         print(result.stderr)
         raise RuntimeError(f"Kompilacja C++ nie powiodła się")
     
-    print("Kompilacja C++ zakończona pomyślnie")
-
 def solve(min_support, min_confidence, verbose=False):
     compile_cpp()
     
